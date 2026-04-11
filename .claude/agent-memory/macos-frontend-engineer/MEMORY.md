@@ -1,1 +1,0 @@
-- [Tech Stack Decision](project_techstack_decision.md) — Python + PySide6 chosen over SwiftUI; PDF via reportlab; QThread for async; PyInstaller for distribution
