@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QTransform
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QLabel
 
 from core.decklist_parser import CardEntry
@@ -94,8 +94,9 @@ class CardThumbnailWidget(QFrame):
 
     def _composite_dfc(self, front_path: Path, back_path: Path) -> QPixmap:
         """
-        Return a _THUMB_W × _THUMB_H pixmap with the front face in the top half
-        and the back face in the bottom half, separated by a thin gray divider.
+        Return a _THUMB_W × _THUMB_H pixmap with both faces rotated 90° CW
+        (card top points right), front in the top half and back in the bottom half,
+        separated by a thin gray divider. Mirrors the compact PDF layout.
         """
         half_h = _THUMB_H // 2
         result = QPixmap(_THUMB_W, _THUMB_H)
@@ -104,11 +105,14 @@ class CardThumbnailWidget(QFrame):
         painter = QPainter(result)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
+        rotate_cw = QTransform().rotate(90)  # 90° clockwise: card top → right
+
         for i, path in enumerate((front_path, back_path)):
             src = QPixmap(str(path))
             if src.isNull():
                 continue
-            scaled = src.scaled(
+            rotated = src.transformed(rotate_cw, Qt.TransformationMode.SmoothTransformation)
+            scaled = rotated.scaled(
                 _THUMB_W, half_h,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,

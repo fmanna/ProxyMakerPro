@@ -1,3 +1,6 @@
+# Claude Code agent memory (project-local, not source)
+.claude/
+
 # Python
 __pycache__/
 *.py[cod]

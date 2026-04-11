@@ -260,10 +260,10 @@ def generate(
             _draw_rotated_image(c, entry.front_image_path,
                                 x, y + CARD_H / 2, CARD_W, CARD_H / 2,
                                 clockwise=True)
-            # Back face: bottom half, rotated 90° CCW
+            # Back face: bottom half, rotated 90° CW (same orientation as front)
             _draw_rotated_image(c, entry.back_image_path,
                                 x, y, CARD_W, CARD_H / 2,
-                                clockwise=False)
+                                clockwise=True)
             _draw_compact_divider(c, x, y)
         elif face == "back":
             _draw_image(c, entry.back_image_path, x, y, CARD_W, CARD_H)
