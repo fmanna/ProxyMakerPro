@@ -61,6 +61,7 @@ class MainWindow(QMainWindow):
 
         self._settings_panel = SettingsPanel()
         self._settings_panel.generate_requested.connect(self._on_generate_requested)
+        self._settings_panel.dfc_mode_changed.connect(self._card_grid.set_dfc_mode)
 
         splitter.addWidget(self._deck_panel)
         splitter.addWidget(self._card_grid)

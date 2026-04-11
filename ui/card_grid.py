@@ -53,6 +53,7 @@ class CardGrid(QWidget):
 
         # name → list of thumbnail widgets
         self._name_map: dict[str, list[CardThumbnailWidget]] = {}
+        self._dfc_mode: str = "front_only"
 
     # ------------------------------------------------------------------
     # Public API
@@ -90,6 +91,13 @@ class CardGrid(QWidget):
                 )
                 self._grid.addWidget(spacer, total // _COLS, col)
 
+    def set_dfc_mode(self, mode: str) -> None:
+        """Update the display mode and re-render all loaded thumbnails."""
+        self._dfc_mode = mode
+        for widgets in self._name_map.values():
+            for widget in widgets:
+                widget.refresh_display(mode)
+
     def update_card(
         self, name: str, front_path: object, back_path: object
     ) -> None:
@@ -98,7 +106,7 @@ class CardGrid(QWidget):
         bp = Path(str(back_path)) if back_path else None
 
         for widget in self._name_map.get(name, []):
-            widget.set_loaded(fp, bp)
+            widget.set_loaded(fp, bp, self._dfc_mode)
 
     def set_card_error(self, name: str, message: str) -> None:
         """Called by FetchWorker.card_error — mark all thumbnails for name."""

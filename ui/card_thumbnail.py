@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QTransform
+from PySide6.QtGui import QPixmap, QPainter, QColor, QFont, QTransform
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QLabel
 
 from core.decklist_parser import CardEntry
@@ -33,6 +33,7 @@ class CardThumbnailWidget(QFrame):
         self.entry      = entry
         self.front_path: Optional[Path] = None
         self.back_path:  Optional[Path] = None
+        self._dfc_mode: str = "front_only"
 
         self.setFixedSize(_WIDGET_W, _WIDGET_H)
         self.setFrameShape(QFrame.Shape.StyledPanel)
@@ -67,16 +68,40 @@ class CardThumbnailWidget(QFrame):
     # Public API
     # ------------------------------------------------------------------
 
-    def set_loaded(self, front_path: Path, back_path: Optional[Path]) -> None:
+    def set_loaded(
+        self,
+        front_path: Path,
+        back_path: Optional[Path],
+        dfc_mode: str = "front_only",
+    ) -> None:
         self.front_path = front_path
         self.back_path  = back_path
+        self._dfc_mode  = dfc_mode
         self.entry.front_image_path = front_path
         self.entry.back_image_path  = back_path
+        self._render()
+        self._refresh_info_label()
 
-        if back_path and back_path.exists():
-            pixmap = self._composite_dfc(front_path, back_path)
+    def refresh_display(self, dfc_mode: str) -> None:
+        """Re-render with a new DFC mode; no-op if images haven't loaded yet."""
+        if self.front_path is None:
+            return
+        self._dfc_mode = dfc_mode
+        self._render()
+
+    # ------------------------------------------------------------------
+    # Internal rendering
+    # ------------------------------------------------------------------
+
+    def _render(self) -> None:
+        is_dfc = self.back_path and self.back_path.exists()
+
+        if is_dfc and self._dfc_mode == "compact_stacked":
+            pixmap = self._composite(self.front_path, self.back_path, rotated=True)
+        elif is_dfc and self._dfc_mode == "both_separate":
+            pixmap = self._composite(self.front_path, self.back_path, rotated=False)
         else:
-            pixmap = QPixmap(str(front_path))
+            pixmap = QPixmap(str(self.front_path))
             if not pixmap.isNull():
                 pixmap = pixmap.scaled(
                     _THUMB_W, _THUMB_H,
@@ -90,13 +115,13 @@ class CardThumbnailWidget(QFrame):
         else:
             self._img_label.setText("(could not load image)")
 
-        self._refresh_info_label()
-
-    def _composite_dfc(self, front_path: Path, back_path: Path) -> QPixmap:
+    def _composite(
+        self, front_path: Path, back_path: Path, rotated: bool
+    ) -> QPixmap:
         """
-        Return a _THUMB_W × _THUMB_H pixmap with both faces rotated 90° CW
-        (card top points right), front in the top half and back in the bottom half,
-        separated by a thin gray divider. Mirrors the compact PDF layout.
+        Stack front (top) and back (bottom) into a single _THUMB_W × _THUMB_H pixmap.
+        rotated=True  → each face is rotated 90° CW first (compact mode).
+        rotated=False → faces are shown in portrait (both_separate mode).
         """
         half_h = _THUMB_H // 2
         result = QPixmap(_THUMB_W, _THUMB_H)
@@ -105,27 +130,25 @@ class CardThumbnailWidget(QFrame):
         painter = QPainter(result)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
-        rotate_cw = QTransform().rotate(90)  # 90° clockwise: card top → right
+        rotate_cw = QTransform().rotate(90) if rotated else None
 
         for i, path in enumerate((front_path, back_path)):
             src = QPixmap(str(path))
             if src.isNull():
                 continue
-            rotated = src.transformed(rotate_cw, Qt.TransformationMode.SmoothTransformation)
-            scaled = rotated.scaled(
+            if rotate_cw is not None:
+                src = src.transformed(rotate_cw, Qt.TransformationMode.SmoothTransformation)
+            scaled = src.scaled(
                 _THUMB_W, half_h,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
-            # Centre each face within its half-slot
             dest_x = (_THUMB_W - scaled.width()) // 2
             dest_y = i * half_h + (half_h - scaled.height()) // 2
             painter.drawPixmap(dest_x, dest_y, scaled)
 
-        # Thin gray divider between the two faces
         painter.setPen(QColor(160, 160, 160))
         painter.drawLine(0, half_h, _THUMB_W, half_h)
-
         painter.end()
         return result
 

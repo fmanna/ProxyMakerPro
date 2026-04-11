@@ -15,10 +15,10 @@ from typing import Optional
 # Standalone lines that indicate a section change (case-insensitive match)
 _SECTION_HEADERS = {"deck", "sideboard", "companion", "commander", "maindeck"}
 
-# Matches: "4 Card Name" or "4x Card Name" optionally followed by " (SET) 123"
+# Matches: "4 Card Name" or "4x Card Name" optionally followed by " (SET)" or " (SET) 123"
 # Groups: 1=count  2=name  3=set_code (optional)  4=collector_number (optional)
 _LINE_RE = re.compile(
-    r"^(\d+)[xX]?\s+(.+?)(?:\s+\(([A-Z0-9]{3,6})\)\s+(\d+))?$"
+    r"^(\d+)[xX]?\s+(.+?)(?:\s+\(([A-Z0-9]{3,6})\)(?:\s+(\d+))?)?$"
 )
 
 

@@ -14,6 +14,7 @@ from core.decklist_parser import PrintSettings
 
 class SettingsPanel(QWidget):
     generate_requested = Signal(object)  # carries a PrintSettings instance
+    dfc_mode_changed   = Signal(str)     # emitted immediately when DFC selection changes
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -63,7 +64,7 @@ class SettingsPanel(QWidget):
         self._compact_warn.hide()
         dfc_layout.addWidget(self._compact_warn)
 
-        self._rb_compact.toggled.connect(self._on_dfc_changed)
+        self._dfc_group.buttonToggled.connect(self._on_dfc_changed)
         layout.addWidget(dfc_box)
 
         # ── Options ────────────────────────────────────────────────────
@@ -123,8 +124,11 @@ class SettingsPanel(QWidget):
 
     # ------------------------------------------------------------------
 
-    def _on_dfc_changed(self, checked: bool) -> None:
-        self._compact_warn.setVisible(checked)
+    def _on_dfc_changed(self, button, checked: bool) -> None:
+        if not checked:
+            return  # Only act on the newly selected button
+        self._compact_warn.setVisible(button is self._rb_compact)
+        self.dfc_mode_changed.emit(self.current_settings().dfc_mode)
 
     def _on_generate_clicked(self) -> None:
         self.generate_requested.emit(self.current_settings())

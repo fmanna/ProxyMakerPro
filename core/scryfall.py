@@ -85,9 +85,13 @@ def fetch_card_metadata(
         except requests.HTTPError:
             pass  # Fall through to fuzzy search
 
+    params: dict = {"fuzzy": name}
+    if set_code:
+        params["set"] = set_code.lower()
+
     resp = requests.get(
         f"{_API_BASE}/cards/named",
-        params={"fuzzy": name},
+        params=params,
         headers=_HEADERS,
         timeout=10,
     )
