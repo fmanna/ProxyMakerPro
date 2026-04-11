@@ -11,6 +11,7 @@ fallback URL is attempted.
 Cache location: ~/Library/Caches/com.proxymakerpro.images/
 """
 
+import json
 import time
 from pathlib import Path
 from typing import Optional
@@ -20,7 +21,8 @@ import requests
 # Constants
 # ---------------------------------------------------------------------------
 
-CACHE_DIR = Path.home() / "Library" / "Caches" / "com.proxymakerpro.images"
+CACHE_DIR           = Path.home() / "Library" / "Caches" / "com.proxymakerpro.images"
+_METADATA_CACHE_FILE = CACHE_DIR / "metadata_cache.json"
 
 _API_BASE = "https://api.scryfall.com"
 _GATHERER_IMG = "https://gatherer.wizards.com/Handlers/Image.ashx"
@@ -42,13 +44,46 @@ def ensure_cache() -> None:
 
 
 def clear_cache() -> int:
-    """Delete all cached PNG files. Returns count removed."""
+    """Delete all cached PNG files and the metadata cache. Returns image count removed."""
     count = 0
     if CACHE_DIR.exists():
         for f in CACHE_DIR.glob("*.png"):
             f.unlink(missing_ok=True)
             count += 1
+    _METADATA_CACHE_FILE.unlink(missing_ok=True)
     return count
+
+
+# ---------------------------------------------------------------------------
+# Metadata cache
+# ---------------------------------------------------------------------------
+
+def metadata_cache_key(
+    name: str,
+    set_code: Optional[str],
+    collector_number: Optional[str],
+) -> str:
+    return f"{name.lower()}|{(set_code or '').lower()}|{collector_number or ''}"
+
+
+def load_metadata_cache() -> dict:
+    if _METADATA_CACHE_FILE.exists():
+        try:
+            return json.loads(_METADATA_CACHE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def save_metadata_entry(key: str, data: dict, cache: dict) -> None:
+    """Write a single entry into the in-memory cache dict and persist to disk."""
+    cache[key] = data
+    try:
+        _METADATA_CACHE_FILE.write_text(
+            json.dumps(cache, indent=2), encoding="utf-8"
+        )
+    except Exception:
+        pass  # Non-fatal — next run will re-fetch
 
 
 def front_cache_path(scryfall_id: str) -> Path:
