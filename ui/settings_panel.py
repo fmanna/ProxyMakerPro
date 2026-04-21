@@ -71,6 +71,20 @@ class SettingsPanel(QWidget):
         opt_box = QGroupBox("Options")
         opt_layout = QVBoxLayout(opt_box)
 
+        self._chk_borders = QCheckBox("Print borders")
+        self._chk_borders.setChecked(True)
+        opt_layout.addWidget(self._chk_borders)
+
+        self._borders_warn = QLabel("Borders omitted. Card art fills the full slot.")
+        self._borders_warn.setStyleSheet("color: #666666; font-size: 11px;")
+        self._borders_warn.setWordWrap(True)
+        self._borders_warn.hide()
+        opt_layout.addWidget(self._borders_warn)
+
+        self._chk_borders.toggled.connect(
+            lambda checked: self._borders_warn.setVisible(not checked)
+        )
+
         self._chk_cut_lines = QCheckBox("Include cut lines")
         self._chk_cut_lines.setChecked(True)
         opt_layout.addWidget(self._chk_cut_lines)
@@ -118,6 +132,7 @@ class SettingsPanel(QWidget):
         return PrintSettings(
             page_size=page,
             dfc_mode=dfc_mode,
+            print_borders=self._chk_borders.isChecked(),
             cut_lines=self._chk_cut_lines.isChecked(),
             include_sideboard=self._chk_sideboard.isChecked(),
         )

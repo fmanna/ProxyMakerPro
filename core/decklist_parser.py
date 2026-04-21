@@ -45,6 +45,7 @@ class CardEntry:
 class PrintSettings:
     page_size: str = "letter"       # "letter" | "a4"
     dfc_mode: str = "front_only"    # "front_only" | "both_separate" | "compact_stacked"
+    print_borders: bool = True
     cut_lines: bool = True
     include_sideboard: bool = True
 

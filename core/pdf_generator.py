@@ -40,29 +40,46 @@ COLS = 3
 ROWS = 3
 CARDS_PER_PAGE = COLS * ROWS
 
+# Fraction of the Scryfall PNG occupied by the black border on each side.
+# Modern cards: ~2 mm border on a 63 mm card ≈ 3.2%; 3.5% gives a safe margin.
+BORDER_FRACTION: float = 0.035
+
 
 # ---------------------------------------------------------------------------
 # Layout helpers
 # ---------------------------------------------------------------------------
 
-def _layout(settings: PrintSettings) -> dict:
-    """Return page geometry as a dict of floats (all in points)."""
+def _layout(settings: PrintSettings, card_w: float, card_h: float) -> dict:
+    """
+    Return page geometry as a dict of floats (all in points).
+    card_w/card_h are the effective slot dimensions — full card size when
+    printing borders, art-only size when borders are omitted.
+    """
     if settings.page_size == "a4":
         page_w, page_h = 595.28, 841.89
-        left   = (page_w - COLS * CARD_W) / 2   # ≈ 27.64 pt
-        bottom = (page_h - ROWS * CARD_H) / 2   # ≈ 42.95 pt
+        left   = (page_w - COLS * card_w) / 2
+        bottom = (page_h - ROWS * card_h) / 2
         h_gap  = 0.0
         v_gap  = 0.0
-    else:  # letter
+    elif settings.print_borders:
+        # US Letter bordered: fixed 18 pt margins with 18 pt column gaps
         page_w, page_h = 612.0, 792.0
         left   = 18.0
         bottom = 18.0
-        h_gap  = 18.0   # gap between columns
-        v_gap  = 0.0    # no gap needed vertically
+        h_gap  = 18.0
+        v_gap  = 0.0
+    else:
+        # US Letter borderless: centre the smaller art grid, no gaps
+        page_w, page_h = 612.0, 792.0
+        left   = (page_w - COLS * card_w) / 2
+        bottom = (page_h - ROWS * card_h) / 2
+        h_gap  = 0.0
+        v_gap  = 0.0
 
     return dict(page_w=page_w, page_h=page_h,
                 left=left, bottom=bottom,
-                h_gap=h_gap, v_gap=v_gap)
+                h_gap=h_gap, v_gap=v_gap,
+                card_w=card_w, card_h=card_h)
 
 
 def _card_xy(slot_index: int, geo: dict) -> tuple[float, float]:
@@ -74,8 +91,8 @@ def _card_xy(slot_index: int, geo: dict) -> tuple[float, float]:
     col           = slot_index % COLS
     row_from_top  = slot_index // COLS
     row_from_bot  = ROWS - 1 - row_from_top
-    x = geo["left"]   + col          * (CARD_W + geo["h_gap"])
-    y = geo["bottom"] + row_from_bot * (CARD_H + geo["v_gap"])
+    x = geo["left"]   + col          * (geo["card_w"] + geo["h_gap"])
+    y = geo["bottom"] + row_from_bot * (geo["card_h"] + geo["v_gap"])
     return x, y
 
 
@@ -106,6 +123,87 @@ def _draw_image(
     c.setFont("Helvetica", 8)
     label = "Image not found"
     c.drawCentredString(x + w / 2, y + h / 2 - 4, label)
+    c.restoreState()
+
+
+def _draw_image_borderless(
+    c: canvas.Canvas,
+    path: Optional[Path],
+    x: float, y: float,
+    w: float, h: float,
+) -> None:
+    """
+    Draw a card image scaled up so the black border extends outside the slot,
+    then clip to the exact slot rectangle so only the art/text area is visible.
+    Falls back to the normal draw (with placeholder) if the image is missing.
+    """
+    if not (path and path.exists()):
+        _draw_image(c, path, x, y, w, h)
+        return
+    try:
+        reader = ImageReader(str(path))
+    except Exception:
+        _draw_image(c, path, x, y, w, h)
+        return
+
+    scale  = 1.0 / (1.0 - 2.0 * BORDER_FRACTION)  # ≈ 1.0753
+    draw_w = w * scale
+    draw_h = h * scale
+    draw_x = x - (draw_w - w) / 2
+    draw_y = y - (draw_h - h) / 2
+
+    c.saveState()
+    clip = c.beginPath()
+    clip.rect(x, y, w, h)
+    c.clipPath(clip, stroke=0, fill=0)
+    c.drawImage(reader, draw_x, draw_y, draw_w, draw_h,
+                preserveAspectRatio=False, mask="auto")
+    c.restoreState()
+
+
+def _draw_rotated_image_borderless(
+    c: canvas.Canvas,
+    path: Optional[Path],
+    x: float, y: float,
+    w: float, h: float,
+    clockwise: bool,
+) -> None:
+    """
+    Borderless variant of _draw_rotated_image for compact DFC mode.
+    The clip is established after the rotate transform so it aligns with
+    the rotated slot, not the pre-rotation page coordinates.
+    """
+    if not (path and path.exists()):
+        _draw_rotated_image(c, path, x, y, w, h, clockwise)
+        return
+    try:
+        reader = ImageReader(str(path))
+    except Exception:
+        _draw_rotated_image(c, path, x, y, w, h, clockwise)
+        return
+
+    scale = 1.0 / (1.0 - 2.0 * BORDER_FRACTION)
+
+    c.saveState()
+    if clockwise:
+        c.translate(x, y + h)
+        c.rotate(-90)
+    else:
+        c.translate(x + w, y)
+        c.rotate(90)
+
+    # After rotation the slot occupies (0, 0, h, w) in local space
+    local_w, local_h = h, w
+    draw_w = local_w * scale
+    draw_h = local_h * scale
+    draw_x = -(draw_w - local_w) / 2
+    draw_y = -(draw_h - local_h) / 2
+
+    clip = c.beginPath()
+    clip.rect(0, 0, local_w, local_h)
+    c.clipPath(clip, stroke=0, fill=0)
+    c.drawImage(reader, draw_x, draw_y, draw_w, draw_h,
+                preserveAspectRatio=False, mask="auto")
     c.restoreState()
 
 
@@ -188,15 +286,16 @@ def _draw_rotated_image(
 def _draw_compact_divider(
     c: canvas.Canvas,
     x: float, y: float,
-    w: float = CARD_W,
+    card_w: float = CARD_W,
+    card_h: float = CARD_H,
 ) -> None:
     """Draw the horizontal divider between the two faces in compact mode."""
-    mid_y = y + CARD_H / 2
+    mid_y = y + card_h / 2
     c.saveState()
     c.setStrokeColorRGB(0.3, 0.3, 0.3)
     c.setLineWidth(0.75)
     c.setDash(4, 2)
-    c.line(x, mid_y, x + w, mid_y)
+    c.line(x, mid_y, x + card_w, mid_y)
     c.restoreState()
 
 
@@ -241,7 +340,17 @@ def generate(
     Generate a print-ready PDF at output_path.
     Raises on file I/O errors; individual missing images become gray placeholders.
     """
-    geo = _layout(settings)
+    if settings.print_borders:
+        card_w, card_h = CARD_W, CARD_H
+        draw_fn         = _draw_image
+        draw_rotated_fn = _draw_rotated_image
+    else:
+        card_w = CARD_W * (1.0 - 2.0 * BORDER_FRACTION)
+        card_h = CARD_H * (1.0 - 2.0 * BORDER_FRACTION)
+        draw_fn         = _draw_image_borderless
+        draw_rotated_fn = _draw_rotated_image_borderless
+
+    geo = _layout(settings, card_w, card_h)
     render_list = _build_render_list(entries, settings)
 
     c = canvas.Canvas(output_path, pagesize=(geo["page_w"], geo["page_h"]))
@@ -257,21 +366,21 @@ def generate(
 
         if settings.dfc_mode == "compact_stacked" and entry.back_image_path:
             # Front face: top half, rotated 90° CW (Dead // Gone layout)
-            _draw_rotated_image(c, entry.front_image_path,
-                                x, y + CARD_H / 2, CARD_W, CARD_H / 2,
-                                clockwise=True)
+            draw_rotated_fn(c, entry.front_image_path,
+                            x, y + card_h / 2, card_w, card_h / 2,
+                            clockwise=True)
             # Back face: bottom half, rotated 90° CW (same orientation as front)
-            _draw_rotated_image(c, entry.back_image_path,
-                                x, y, CARD_W, CARD_H / 2,
-                                clockwise=True)
-            _draw_compact_divider(c, x, y)
+            draw_rotated_fn(c, entry.back_image_path,
+                            x, y, card_w, card_h / 2,
+                            clockwise=True)
+            _draw_compact_divider(c, x, y, card_w, card_h)
         elif face == "back":
-            _draw_image(c, entry.back_image_path, x, y, CARD_W, CARD_H)
+            draw_fn(c, entry.back_image_path, x, y, card_w, card_h)
         else:
-            _draw_image(c, entry.front_image_path, x, y, CARD_W, CARD_H)
+            draw_fn(c, entry.front_image_path, x, y, card_w, card_h)
 
         if settings.cut_lines:
-            _draw_cut_lines(c, x, y)
+            _draw_cut_lines(c, x, y, card_w, card_h)
 
     # Save even if render_list is empty (produces a blank page)
     c.save()
