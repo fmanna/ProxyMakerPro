@@ -18,7 +18,7 @@ _SECTION_HEADERS = {"deck", "sideboard", "companion", "commander", "maindeck"}
 # Matches: "4 Card Name" or "4x Card Name" optionally followed by " (SET)" or " (SET) 123"
 # Groups: 1=count  2=name  3=set_code (optional)  4=collector_number (optional)
 _LINE_RE = re.compile(
-    r"^(\d+)[xX]?\s+(.+?)(?:\s+\(([A-Z0-9]{3,6})\)(?:\s+(\d+))?)?$"
+    r"^(\d+)[xX]?\s+(.+?)(?:\s+\(([A-Z0-9]{3,6})\)(?:\s+([A-Za-z0-9]+))?)?$"
 )
 
 
@@ -39,6 +39,11 @@ class CardEntry:
     front_image_path: Optional[Path] = field(default=None, repr=False)
     back_image_path: Optional[Path] = field(default=None, repr=False)
     error: Optional[str] = field(default=None, repr=False)
+
+    @property
+    def slot_key(self) -> str:
+        """Unique key for this specific printing: name + set code + collector number."""
+        return f"{self.name.lower()}|{(self.set_code or '').lower()}|{self.collector_number or ''}"
 
 
 @dataclass

@@ -97,6 +97,33 @@ def _card_xy(slot_index: int, geo: dict) -> tuple[float, float]:
 
 
 # ---------------------------------------------------------------------------
+# Image reader cache
+# ---------------------------------------------------------------------------
+
+def _get_reader(
+    path: Optional[Path],
+    cache: dict,
+) -> Optional[ImageReader]:
+    """
+    Return a cached ImageReader for path, loading it on first access.
+    Using a shared cache across draw calls avoids re-reading the same PNG
+    for every copy of a card (e.g. 4× Lightning Bolt → 1 disk read, not 4).
+    """
+    if not path:
+        return None
+    key = str(path)
+    if key not in cache:
+        if path.exists():
+            try:
+                cache[key] = ImageReader(key)
+            except Exception:
+                cache[key] = None
+        else:
+            cache[key] = None
+    return cache[key]
+
+
+# ---------------------------------------------------------------------------
 # Drawing primitives
 # ---------------------------------------------------------------------------
 
@@ -105,11 +132,12 @@ def _draw_image(
     path: Optional[Path],
     x: float, y: float,
     w: float, h: float,
+    _cache: Optional[dict] = None,
 ) -> None:
     """Draw a card image. Draws a gray placeholder if path is missing."""
-    if path and path.exists():
+    reader = _get_reader(path, _cache if _cache is not None else {})
+    if reader is not None:
         try:
-            reader = ImageReader(str(path))
             c.drawImage(reader, x, y, w, h,
                         preserveAspectRatio=True, mask="auto")
             return
@@ -121,8 +149,7 @@ def _draw_image(
     c.rect(x, y, w, h, fill=1, stroke=0)
     c.setFillColorRGB(0.4, 0.4, 0.4)
     c.setFont("Helvetica", 8)
-    label = "Image not found"
-    c.drawCentredString(x + w / 2, y + h / 2 - 4, label)
+    c.drawCentredString(x + w / 2, y + h / 2 - 4, "Image not found")
     c.restoreState()
 
 
@@ -131,19 +158,16 @@ def _draw_image_borderless(
     path: Optional[Path],
     x: float, y: float,
     w: float, h: float,
+    _cache: Optional[dict] = None,
 ) -> None:
     """
     Draw a card image scaled up so the black border extends outside the slot,
     then clip to the exact slot rectangle so only the art/text area is visible.
     Falls back to the normal draw (with placeholder) if the image is missing.
     """
-    if not (path and path.exists()):
-        _draw_image(c, path, x, y, w, h)
-        return
-    try:
-        reader = ImageReader(str(path))
-    except Exception:
-        _draw_image(c, path, x, y, w, h)
+    reader = _get_reader(path, _cache if _cache is not None else {})
+    if reader is None:
+        _draw_image(c, path, x, y, w, h, _cache)
         return
 
     scale  = 1.0 / (1.0 - 2.0 * BORDER_FRACTION)  # ≈ 1.0753
@@ -167,19 +191,16 @@ def _draw_rotated_image_borderless(
     x: float, y: float,
     w: float, h: float,
     clockwise: bool,
+    _cache: Optional[dict] = None,
 ) -> None:
     """
     Borderless variant of _draw_rotated_image for compact DFC mode.
     The clip is established after the rotate transform so it aligns with
     the rotated slot, not the pre-rotation page coordinates.
     """
-    if not (path and path.exists()):
-        _draw_rotated_image(c, path, x, y, w, h, clockwise)
-        return
-    try:
-        reader = ImageReader(str(path))
-    except Exception:
-        _draw_rotated_image(c, path, x, y, w, h, clockwise)
+    reader = _get_reader(path, _cache if _cache is not None else {})
+    if reader is None:
+        _draw_rotated_image(c, path, x, y, w, h, clockwise, _cache)
         return
 
     scale = 1.0 / (1.0 - 2.0 * BORDER_FRACTION)
@@ -226,6 +247,7 @@ def _draw_rotated_image(
     x: float, y: float,
     w: float, h: float,
     clockwise: bool,
+    _cache: Optional[dict] = None,
 ) -> None:
     """
     Draw a card image rotated 90° into a w×h rectangle whose bottom-left is (x, y).
@@ -242,13 +264,7 @@ def _draw_rotated_image(
       Bottom half: back face rotated 90° CCW  → top of card points left
       When the physical card is flipped 180° the back face reads upright.
     """
-    if path and path.exists():
-        try:
-            reader = ImageReader(str(path))
-        except Exception:
-            reader = None
-    else:
-        reader = None
+    reader = _get_reader(path, _cache if _cache is not None else {})
 
     c.saveState()
     if clockwise:
@@ -353,6 +369,12 @@ def generate(
     geo = _layout(settings, card_w, card_h)
     render_list = _build_render_list(entries, settings)
 
+    # Pre-load every unique image once so multi-copy cards don't re-read the file.
+    reader_cache: dict = {}
+    for entry in entries:
+        for p in (entry.front_image_path, entry.back_image_path):
+            _get_reader(p, reader_cache)
+
     c = canvas.Canvas(output_path, pagesize=(geo["page_w"], geo["page_h"]))
 
     for abs_idx, (face, entry) in enumerate(render_list):
@@ -368,16 +390,18 @@ def generate(
             # Front face: top half, rotated 90° CW (Dead // Gone layout)
             draw_rotated_fn(c, entry.front_image_path,
                             x, y + card_h / 2, card_w, card_h / 2,
-                            clockwise=True)
+                            clockwise=True, _cache=reader_cache)
             # Back face: bottom half, rotated 90° CW (same orientation as front)
             draw_rotated_fn(c, entry.back_image_path,
                             x, y, card_w, card_h / 2,
-                            clockwise=True)
+                            clockwise=True, _cache=reader_cache)
             _draw_compact_divider(c, x, y, card_w, card_h)
         elif face == "back":
-            draw_fn(c, entry.back_image_path, x, y, card_w, card_h)
+            draw_fn(c, entry.back_image_path, x, y, card_w, card_h,
+                    _cache=reader_cache)
         else:
-            draw_fn(c, entry.front_image_path, x, y, card_w, card_h)
+            draw_fn(c, entry.front_image_path, x, y, card_w, card_h,
+                    _cache=reader_cache)
 
         if settings.cut_lines:
             _draw_cut_lines(c, x, y, card_w, card_h)

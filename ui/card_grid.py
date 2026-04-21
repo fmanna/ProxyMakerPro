@@ -51,8 +51,8 @@ class CardGrid(QWidget):
         root.addWidget(self._scroll)
         self._scroll.hide()
 
-        # name → list of thumbnail widgets
-        self._name_map: dict[str, list[CardThumbnailWidget]] = {}
+        # slot_key → list of thumbnail widgets
+        self._slot_map: dict[str, list[CardThumbnailWidget]] = {}
         self._dfc_mode: str = "front_only"
 
     # ------------------------------------------------------------------
@@ -62,7 +62,7 @@ class CardGrid(QWidget):
     def populate(self, entries: list[CardEntry]) -> None:
         """Replace the current grid contents with placeholder thumbnails."""
         self._clear_grid()
-        self._name_map.clear()
+        self._slot_map.clear()
 
         if not entries:
             self._scroll.hide()
@@ -78,7 +78,7 @@ class CardGrid(QWidget):
             col = idx % _COLS
             self._grid.addWidget(widget, row, col, Qt.AlignmentFlag.AlignTop)
 
-            self._name_map.setdefault(entry.name, []).append(widget)
+            self._slot_map.setdefault(entry.slot_key, []).append(widget)
 
         # Fill remaining cells in the last row with spacers for alignment
         total = len(entries)
@@ -94,28 +94,28 @@ class CardGrid(QWidget):
     def set_dfc_mode(self, mode: str) -> None:
         """Update the display mode and re-render all loaded thumbnails."""
         self._dfc_mode = mode
-        for widgets in self._name_map.values():
+        for widgets in self._slot_map.values():
             for widget in widgets:
                 widget.refresh_display(mode)
 
     def update_card(
-        self, name: str, front_path: object, back_path: object
+        self, slot_key: str, front_path: object, back_path: object
     ) -> None:
-        """Called by FetchWorker.card_ready — update all thumbnails for name."""
+        """Called by FetchWorker.card_ready — update thumbnails for this slot_key."""
         fp = front_path if isinstance(front_path, Path) else Path(str(front_path))
         bp = Path(str(back_path)) if back_path else None
 
-        for widget in self._name_map.get(name, []):
+        for widget in self._slot_map.get(slot_key, []):
             widget.set_loaded(fp, bp, self._dfc_mode)
 
-    def set_card_error(self, name: str, message: str) -> None:
-        """Called by FetchWorker.card_error — mark all thumbnails for name."""
-        for widget in self._name_map.get(name, []):
+    def set_card_error(self, slot_key: str, message: str) -> None:
+        """Called by FetchWorker.card_error — mark thumbnails for this slot_key."""
+        for widget in self._slot_map.get(slot_key, []):
             widget.set_error(message)
 
     def clear(self) -> None:
         self._clear_grid()
-        self._name_map.clear()
+        self._slot_map.clear()
         self._scroll.hide()
         self._empty_label.show()
 
