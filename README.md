@@ -102,17 +102,38 @@ SB: 3 Grafdigger's Cage
 By default, when no set information is present, the app picks the **most recent
 non-promo English printing** of each card (Scryfall's default).
 
-**To get a specific set's art**, use the MTG Arena format and include the set code
-and collector number in parentheses:
+**To get a specific set's art**, include the set code (and optionally the collector number):
 
 ```
-4 Lightning Bolt (LEA) 161        ← Alpha art
-4 Lightning Bolt (M21) 150        ← Magic 2021 art
-4 Lightning Bolt (ORI) 152        ← Origins art
+4 Lightning Bolt (LEA) 161        ← Alpha art, exact printing
+4 Lightning Bolt (M21) 150        ← Magic 2021 art, exact printing
+4 Lightning Bolt (ORI)            ← Origins art, no collector number needed
 ```
 
-The app uses the precise `https://api.scryfall.com/cards/{set}/{number}` endpoint
-when this annotation is present, guaranteeing the exact printing and artwork you requested.
+- With both set code and collector number, the app uses the precise
+  `https://api.scryfall.com/cards/{set}/{number}` endpoint.
+- With set code only, the app passes `set=` to the `/cards/named` fuzzy endpoint,
+  returning that set's printing.
+
+Collector numbers may be alphanumeric — `85a`, `85b`, etc. are valid:
+
+```
+1 Urza's Tower (ATQ) 85a
+```
+
+### Printing multiple art styles of the same card
+
+Each line in the decklist is treated as an independent printing. To get four different
+art styles of the same card, list each one separately:
+
+```
+1 Ancient Tomb (ZNE)
+1 Ancient Tomb (EXP)
+1 Ancient Tomb (EOS)
+1 Ancient Tomb (TMP)
+```
+
+Each will be fetched and displayed as a separate thumbnail, and printed as a separate card.
 
 ### Finding set codes and collector numbers
 
@@ -132,26 +153,43 @@ when this annotation is present, guaranteeing the exact printing and artwork you
 |---|---|---|
 | **Page size** | US Letter, A4 | 9 cards per page on both |
 | **DFC mode** | Front face only | One slot per card; ignores back face |
-| | Both faces (separate) | Front cards first, then back cards |
-| | Compact — both stacked | Front and back in one card slot (top/bottom halves) |
+| | Both faces (separate) | Front and back printed in consecutive slots |
+| | Compact — both stacked | Front and back in one slot, rotated 90° |
+| **Print borders** | On / Off | Print cards with/without borders |
 | **Cut lines** | On / Off | Dashed guide lines at card boundaries |
 | **Include sideboard** | On / Off | Exclude sideboard cards from the PDF |
 
+### Borderless mode (Print borders: Off)
+
+When **Print borders** is unchecked, the black border is removed from each card:
+
+- The card slot shrinks to art-only dimensions (~2.33" × 3.25"), cropping out the ~2 mm
+  black border on each edge.
+- The page grid re-centres around the smaller slots.
+- Cut lines (if enabled) draw around the art boundary, so the card you cut out has no border.
+
+This is useful for borderless-style proxies or when sleeving cards where the border would
+show through a clear sleeve. The printed card will be slightly smaller than a standard
+Magic card.
+
 ### About Compact DFC Mode
 
-Compact mode fits both faces of a double-faced card into the standard 2.5" × 3.5" slot
-by printing each face at half height (~1.75"). This is useful as a quick reference but
-reduces card text to roughly 5 pt — legible but small.
-**"Both faces (separate)"** is recommended when you need to read the card text comfortably.
+Compact mode fits both faces of a double-faced card into one slot by rotating each face
+90° clockwise and stacking them top/bottom (matching the layout of split cards like
+Dead // Gone). The card preview in the grid updates to reflect the selected mode.
 
 ---
 
 ## Image Cache
 
-Downloaded images are stored in `~/Library/Caches/com.proxymakerpro.images/`.
-Re-fetching the same card is instant on subsequent runs.
+Downloaded images and card metadata are stored in `~/Library/Caches/com.proxymakerpro.images/`.
+Re-fetching the same card (same set and collector number) is instant on subsequent runs —
+no network request is made.
 
 To clear the cache: **File → Clear Image Cache…**
+
+> After clearing the cache, the next Fetch Cards will re-download all images and
+> re-query the Scryfall API for metadata.
 
 ---
 
@@ -162,6 +200,9 @@ To clear the cache: **File → Clear Image Cache…**
 - **Cut lines** make a reliable cutting guide. A paper trimmer gives cleaner edges
   than scissors.
 - **Card sleeves:** standard-size sleeves (63 × 88 mm) fit the cut proxies perfectly.
+  Borderless-mode cards (~59 × 84 mm) fit too, with a small gap at the edges.
 - If a card shows an error thumbnail, the card name may be misspelled or the card
   may be Arena/digital-only (not on Scryfall's image CDN). Double-check the spelling
   and try the Arena format with an explicit set code.
+- **Different art for the same card:** list each printing on its own line with its
+  set code. The app fetches and prints each independently.
